@@ -18,6 +18,6 @@ logging.basicConfig(
 
 logging.info("Logger is working")
 
-# inside logger.py
+
 if __name__ == "__main__":
     print("Logger working ✅")

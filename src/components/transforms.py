@@ -6,7 +6,7 @@ from src.exception import CustomException
 def get_train_transforms():
     try:
             return transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize((128, 128)),
 
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomVerticalFlip(),
@@ -32,7 +32,7 @@ def get_train_transforms():
 def get_val_transforms():
     try:
             return transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize((128, 128)),
                 transforms.ToTensor(),
 
                 transforms.Normalize(

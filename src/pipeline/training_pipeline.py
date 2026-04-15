@@ -1,4 +1,6 @@
 import os
+from pyexpat import model
+from random import sample
 from src.components.data_ingestion import DataIngestion
 from src.components.data_validation import DataValidation
 from src.components.data_transformation import DataTransformation
@@ -11,6 +13,10 @@ from src.components.transforms import get_train_transforms, get_val_transforms
 import torch
 from src.components.model import SkinCancerModel
 from src.components.trainer import train_one_epoch, validate
+from src.components.utils import save_checkpoint
+import matplotlib.pyplot as plt
+from src.components.gradcam import GradCAM
+from PIL import Image
 
 class TrainingPipeline:
     try:
@@ -99,6 +105,49 @@ class TrainingPipeline:
                     logging.info(f"Train Loss: {train_loss:.4f}")
                     logging.info(f"Validation Accuracy: {val_acc:.4f}")
 
+                    
+                    print("💾 Saving model...")
+
+                    save_path = f"artifacts/model_epoch_{epoch+1}.pth"
+                    save_checkpoint(model, optimizer, epoch, path=save_path)
+
+                    print(f"✅ Model saved at {save_path}")
+                    print("📁 Files in artifacts:", os.listdir("artifacts"))
+
+
+
+
+                sample = val_df.iloc[0]
+                img_path = sample['image_path']
+
+                image = Image.open(img_path).convert("RGB")
+
+                transform = get_val_transforms()
+                input_tensor = transform(image).unsqueeze(0).to(device)
+
+                # target last CNN layer
+                target_layer = model.cnn[-1]
+
+                gradcam = GradCAM(model, target_layer)
+                cam = gradcam.generate(input_tensor)
+
+                # overlay heatmap
+                img = np.array(image.resize((224, 224)))
+                heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+
+                overlay = heatmap * 0.4 + img
+
+                plt.imshow(overlay.astype("uint8"))
+                plt.title("🔥 Grad-CAM")
+                plt.axis("off")
+                plt.show()
+
+
+
     except Exception as e:
         logging.error(f"Error in TrainingPipeline: {str(e)}")
         raise CustomException(e, sys)   
+    
+
+
+

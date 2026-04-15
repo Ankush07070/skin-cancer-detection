@@ -5,13 +5,13 @@ from src.exception import CustomException
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-print("🚀 Starting Skin Cancer Data Pipeline...")
+
 
 try:
     from src.pipeline.training_pipeline import TrainingPipeline
 
     if __name__ == "__main__":
-        print("📦 Initializing Pipeline...")
+        print("🚀 Starting Skin Cancer Data Pipeline...")
 
         pipeline = TrainingPipeline()
 
