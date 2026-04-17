@@ -14,11 +14,11 @@ import base64
 import cv2
 import numpy as np
 from io import BytesIO
-from .model_loader import load_model
+from app.model_loader import load_model
 
 sys.path.append(os.path.dirname(__file__))
 
-from image_utils import process_image
+from app.image_utils import process_image
 
 from flask_cors import CORS
 
