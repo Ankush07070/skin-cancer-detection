@@ -1,86 +1,72 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from src.logger import logging
-from src.exception import CustomException   
-import sys
-
 
 
 class TransformerBlock(nn.Module):
-    try:
-            def __init__(self, embed_dim=2048, num_heads=8):
-                super().__init__()
+    def __init__(self, embed_dim=256, num_heads=4):
+        super().__init__()
 
-                self.attention = nn.MultiheadAttention(
-                    embed_dim=embed_dim,
-                    num_heads=num_heads,
-                    batch_first=True
-                )
+        self.attention = nn.MultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            batch_first=True
+        )
 
-                self.norm1 = nn.LayerNorm(embed_dim)
-                self.norm2 = nn.LayerNorm(embed_dim)
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
 
-                self.ffn = nn.Sequential(
-                    nn.Linear(embed_dim, embed_dim),
-                    nn.ReLU(),
-                    nn.Linear(embed_dim, embed_dim)
-                )
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, embed_dim)
+        )
 
-            def forward(self, x):
-                # Self-attention
-                attn_output, _ = self.attention(x, x, x)
-                x = self.norm1(x + attn_output)
+    def forward(self, x):
+        attn_output, _ = self.attention(x, x, x)
+        x = self.norm1(x + attn_output)
 
-                # Feed forward
-                ffn_output = self.ffn(x)
-                x = self.norm2(x + ffn_output)
+        ffn_output = self.ffn(x)
+        x = self.norm2(x + ffn_output)
 
-                return x
-    except Exception as e:
-        logging.error(f"Error in TransformerBlock: {str(e)}")
-        raise CustomException(e, sys)
+        return x
 
-# main  modeel class
+
 class SkinCancerModel(nn.Module):
-    try:
-        def __init__(self, num_classes=7):
-            super().__init__()
+    def __init__(self, num_classes=7):
+        super().__init__()
 
-            # Pretrained ResNet50
-            self.cnn = models.resnet50(pretrained=True)
+        # 🔥 LIGHTWEIGHT CNN (IMPORTANT CHANGE)
+        base_model = models.mobilenet_v2(pretrained=True)
 
-            # Remove final layer
-            self.cnn = nn.Sequential(*list(self.cnn.children())[:-2])
+        # Take feature extractor only
+        self.cnn = base_model.features   # output channels = 1280
 
-            self.transformer = TransformerBlock(embed_dim=2048)
+        # 🔥 REDUCE DIMENSION (CRITICAL)
+        self.reduce_dim = nn.Conv2d(1280, 256, kernel_size=1)
 
-            self.pool = nn.AdaptiveAvgPool1d(1)
+        # 🔥 LIGHT TRANSFORMER
+        self.transformer = TransformerBlock(embed_dim=256)
 
-            self.classifier = nn.Linear(2048, num_classes)
+        self.pool = nn.AdaptiveAvgPool1d(1)
 
-        def forward(self, x):
-            # CNN feature extraction
-            x = self.cnn(x)  
-            # Shape: (B, 2048, H, W)
+        self.classifier = nn.Linear(256, num_classes)
 
-            B, C, H, W = x.shape
+    def forward(self, x):
+        x = self.cnn(x)   # (B, 1280, H, W)
 
-            # Flatten spatial dims → sequence
-            x = x.view(B, C, H * W).permute(0, 2, 1)
-            # Shape: (B, N, 2048)
+        x = self.reduce_dim(x)  # (B, 256, H, W)
 
-            # Transformer
-            x = self.transformer(x)
+        B, C, H, W = x.shape
 
-            # Pool
-            x = x.permute(0, 2, 1)
-            x = self.pool(x).squeeze(-1)
+        # Flatten → sequence
+        x = x.view(B, C, H * W).permute(0, 2, 1)  # (B, N, 256)
 
-            # Classification
-            x = self.classifier(x)
+        x = self.transformer(x)
 
-            return x
-    except Exception as e:
-        logging.error(f"Error in SkinCancerModel: {str(e)}")
-        raise CustomException(e, sys)
+        x = x.permute(0, 2, 1)
+        x = self.pool(x).squeeze(-1)
+
+        x = self.classifier(x)
+
+        return x

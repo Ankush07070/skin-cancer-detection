@@ -5,38 +5,42 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
 import torch
 from PIL import Image
 
-
-import base64
-import cv2
-import numpy as np
-from io import BytesIO
 from app.model_loader import load_model
-
-sys.path.append(os.path.dirname(__file__))
-
 from app.image_utils import process_image
 
-from flask_cors import CORS
-
+# =========================
+# FLASK APP
+# =========================
 app = Flask(__name__)
 CORS(app)
+
 # =========================
 # CONFIG
 # =========================
 MODEL_PATH = "artifacts/model_epoch_2.pth"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# =========================
+# LOAD MODEL
+# =========================
 try:
     model = load_model(MODEL_PATH, device)
+    model.eval()
     print("✅ Model loaded successfully")
+
 except Exception as e:
     print("❌ Model loading failed:", e)
 
-# Label mapping
+# =========================
+# CLASS LABELS
+# =========================
 classes = [
     "Melanocytic Nevi",
     "Melanoma",
@@ -46,51 +50,70 @@ classes = [
     "Vascular Lesions",
     "Dermatofibroma"
 ]
+
+# =========================
+# HOME ROUTE
+# =========================
 @app.route("/")
 def home():
     return "🚀 Skin Cancer Detection API is running!"
 
-
-
+# =========================
+# PREDICTION ROUTE
+# =========================
 @app.route("/predict", methods=["POST"])
 def predict():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"})
 
-    file = request.files["file"]
-    image = Image.open(file).convert("RGB")
+    try:
 
-    input_tensor = process_image(image).to(device)
+        # Check file
+        if "file" not in request.files:
+            return jsonify({
+                "error": "No file uploaded"
+            }), 400
 
-    # Prediction
-    with torch.no_grad():
-        outputs = model(input_tensor)
-        probs = torch.softmax(outputs, dim=1)
-        confidence, pred = torch.max(probs, 1)
+        file = request.files["file"]
 
-    # ===== Grad-CAM =====
-    from src.components.gradcam import GradCAM
+        # Read image
+        image = Image.open(file).convert("RGB")
 
-    target_layer = model.cnn[-1]
-    gradcam = GradCAM(model, target_layer)
-    cam = gradcam.generate(input_tensor)
+        # Preprocess image
+        input_tensor = process_image(image).to(device)
 
-    # Convert original image
-    img = np.array(image.resize((224, 224)))
+        # Prediction
+        with torch.no_grad():
 
-    heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
-    overlay = heatmap * 0.4 + img
+            outputs = model(input_tensor)
 
-    # Convert to base64
-    _, buffer = cv2.imencode('.jpg', overlay.astype("uint8"))
-    heatmap_base64 = base64.b64encode(buffer).decode("utf-8")
+            probs = torch.softmax(outputs, dim=1)
 
-    return jsonify({
-        "prediction": classes[pred.item()],
-        "confidence": float(confidence.item()),
-        "heatmap": heatmap_base64
-    })
+            confidence, pred = torch.max(probs, 1)
 
+        prediction = classes[pred.item()]
 
+        confidence_score = float(confidence.item())
+
+        # Return response
+        return jsonify({
+            "prediction": prediction,
+            "confidence": confidence_score
+        })
+
+    except Exception as e:
+
+        print("❌ Prediction Error:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+# =========================
+# RUN APP
+# =========================
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
+
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        debug=True
+    )
